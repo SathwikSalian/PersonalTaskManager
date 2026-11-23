@@ -1,4 +1,3 @@
-const API_URL = "https://personal-task-manager-api-0xuh.onrender.com";
 
 const taskInput = document.getElementById("taskInput");
 const priorityInput = document.getElementById("priorityInput");
@@ -6,15 +5,23 @@ const addButton = document.getElementById("addButton");
 const taskList = document.getElementById("taskList");
 const statusMessage = document.getElementById("statusMessage");
 const filterInput = document.getElementById("filterInput");
-let allTasks = [];
 
+// Deployed Flask backend URL
+const API_URL = "https://personal-task-manager-api-0xuh.onrender.com";
+
+// Stores all tasks received from the backend
+let allTasks = [];
 let messageTimer;
 
 
-// Display success or error messages
-function showMessage(message, color = "#16a34a") {
+// ------------------------------------
+// 1. DISPLAY SUCCESS / ERROR MESSAGES
+// ------------------------------------
+
+function showMessage(message, isError = false) {
     statusMessage.textContent = message;
-    statusMessage.style.color = color;
+
+    statusMessage.style.color = isError ? "red" : "green";
 
     clearTimeout(messageTimer);
 
@@ -24,60 +31,91 @@ function showMessage(message, color = "#16a34a") {
 }
 
 
-// Display an individual task
+// ------------------------------------
+// 2. SAFELY READ API RESPONSE
+// ------------------------------------
+
+async function readResponse(response) {
+    const responseText = await response.text();
+
+    let data = {};
+
+    if (responseText) {
+        try {
+            data = JSON.parse(responseText);
+        } catch {
+            throw new Error("The server returned an invalid response.");
+        }
+    }
+
+    if (!response.ok) {
+        throw new Error(data.message || `Request failed: ${response.status}`);
+    }
+
+    return data;
+}
+
+
+// ------------------------------------
+// 3. DISPLAY A SINGLE TASK
+// ------------------------------------
+
 function displayTask(task) {
+
     const li = document.createElement("li");
 
-    li.dataset.id = task.id;
+    // Apply completed-task styling
+    if (task.completed) {
+        li.classList.add("completed-task");
+    }
 
-    // Checkbox for task completion
-const checkbox = document.createElement("input");
-checkbox.type = "checkbox";
-checkbox.checked = task.completed;
+    // Checkbox
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = task.completed;
 
-// Prevent changing a completed task
-checkbox.disabled = task.completed;
+    // Completed tasks cannot be unchecked
+    checkbox.disabled = task.completed;
 
-    // Apply strikethrough if task is completed
-if (task.completed) {
-    li.classList.add("completed-task");
-}
     // Task name
-    const span = document.createElement("span");
-    span.textContent = task.task;
+    const taskName = document.createElement("span");
+    taskName.textContent = task.task;
 
-    // Priority label
+    // Priority
     const priorityLabel = document.createElement("small");
-    priorityLabel.textContent = task.priority || "Medium";
-    priorityLabel.style.fontWeight = "bold";
-    priorityLabel.style.marginLeft = "8px";
+    priorityLabel.textContent = `Priority: ${task.priority}`;
 
     // Creation date
     const dateLabel = document.createElement("small");
 
     if (task.created_at) {
         const date = new Date(task.created_at.replace(" ", "T"));
-        dateLabel.textContent = date.toLocaleDateString();
+
+        dateLabel.textContent = `Created: ${
+            isNaN(date.getTime())
+                ? task.created_at
+                : date.toLocaleString()
+        }`;
+    } else {
+        dateLabel.textContent = "Date unavailable";
     }
-    // Task status label
-const statusLabel = document.createElement("small");
 
-if (task.completed) {
-    statusLabel.textContent = "Completed";
-    statusLabel.style.color = "#16a34a";
-} else {
-    statusLabel.textContent = "Pending";
-    statusLabel.style.color = "#d97706";
-}
-
-statusLabel.style.fontWeight = "bold";
+    // Completion status
+    const statusLabel = document.createElement("small");
+    statusLabel.textContent = task.completed ? "Completed" : "Pending";
 
     // Delete button
     const deleteButton = document.createElement("button");
     deleteButton.textContent = "Delete";
+    deleteButton.type = "button";
 
-    // Checkbox change: PUT request
-    checkbox.addEventListener("change", async function () {
+
+    // --------------------------------
+    // 4. COMPLETE TASK
+    // --------------------------------
+
+    checkbox.addEventListener("change", async () => {
+
         try {
             const response = await fetch(
                 `${API_URL}/api/tasks/${task.id}`,
@@ -89,34 +127,35 @@ statusLabel.style.fontWeight = "bold";
                     body: JSON.stringify({
                         completed: checkbox.checked
                     })
-
                 }
             );
 
-            const data = await response.json();
+            await readResponse(response);
 
-if (!response.ok) {
-    throw new Error(data.message);
-}
+            // Update local task data
+            task.completed = checkbox.checked;
 
-task.completed = checkbox.checked;
+            // Refresh displayed tasks
+            displayFilteredTasks();
 
-displayFilteredTasks();
-
-showMessage("Task completed successfully!");
+            showMessage("Task completed successfully!");
 
         } catch (error) {
-            console.error("Update error:", error);
+            console.error("Update task error:", error);
 
-            checkbox.checked = !checkbox.checked;
+            checkbox.checked = task.completed;
 
-            alert("Could not update task!");
+            showMessage(error.message || "Couldn't update task.", true);
         }
     });
 
 
-    // Delete button: DELETE request
-    deleteButton.addEventListener("click", async function () {
+    // --------------------------------
+    // 5. DELETE TASK
+    // --------------------------------
+
+    deleteButton.addEventListener("click", async () => {
+
         try {
             const response = await fetch(
                 `${API_URL}/api/tasks/${task.id}`,
@@ -125,124 +164,153 @@ showMessage("Task completed successfully!");
                 }
             );
 
-            const data = await response.json();
+            await readResponse(response);
 
-            if (!response.ok) {
-                throw new Error(data.message);
-            }
+            // Remove task from local array
+            allTasks = allTasks.filter(
+                item => item.id !== task.id
+            );
 
-            allTasks = allTasks.filter(item => item.id !== task.id);
             displayFilteredTasks();
-
-            console.log(data.message);
 
             showMessage("Task deleted successfully!");
 
         } catch (error) {
-            console.error("Delete error:", error);
+            console.error("Delete task error:", error);
 
-            alert("Could not delete task!");
+            showMessage(error.message || "Couldn't delete task.", true);
         }
     });
 
 
-    // Add elements to the task list item
-li.appendChild(checkbox);
-li.appendChild(span);
-li.appendChild(priorityLabel);
-li.appendChild(dateLabel);
-li.appendChild(statusLabel);
-li.appendChild(deleteButton);
+    // Add elements to the task item
+    li.appendChild(checkbox);
+    li.appendChild(taskName);
+    li.appendChild(priorityLabel);
+    li.appendChild(dateLabel);
+    li.appendChild(statusLabel);
+    li.appendChild(deleteButton);
 
     taskList.appendChild(li);
 }
 
 
-// GET request: Load tasks from Flask and SQLite
+// ------------------------------------
+// 6. LOAD TASKS FROM BACKEND
+// ------------------------------------
+
 async function loadTasks() {
+
     try {
-        const response = await fetch(
-            "${API_URL}/api/tasks"
-        );
+        const response = await fetch(`${API_URL}/api/tasks`);
 
-        if (!response.ok) {
-            throw new Error("Could not load tasks");
-        }
+        const data = await readResponse(response);
 
-        allTasks = await response.json();
+        allTasks = data;
+
         displayFilteredTasks();
 
     } catch (error) {
-        console.error("Loading error:", error);
-        showMessage("Could not load tasks!", "#dc2626");
+        console.error("Load tasks error:", error);
+
+        showMessage(error.message || "Couldn't load tasks.", true);
     }
 }
 
+
+// ------------------------------------
+// 7. FILTER TASKS
+// ------------------------------------
+
 function displayFilteredTasks() {
+
     const filter = filterInput.value;
 
     taskList.innerHTML = "";
 
     const filteredTasks = allTasks.filter(task => {
-        if (filter === "All") return true;
-        if (filter === "Completed") return task.completed;
-        if (filter === "Pending") return !task.completed;
+
+        if (filter === "All") {
+            return true;
+        }
+
+        if (filter === "Completed") {
+            return task.completed;
+        }
+
+        if (filter === "Pending") {
+            return !task.completed;
+        }
 
         return task.priority === filter;
     });
 
     filteredTasks.forEach(displayTask);
 }
+
+
+// Listen for filter changes
 filterInput.addEventListener("change", displayFilteredTasks);
 
-// POST request: Add a new task
-addButton.addEventListener("click", async function () {
+
+// ------------------------------------
+// 8. ADD A NEW TASK
+// ------------------------------------
+
+addButton.addEventListener("click", async () => {
 
     const taskName = taskInput.value.trim();
     const priority = priorityInput.value;
 
+    // Validate task input
     if (taskName === "") {
-        showMessage("Please enter a task!", "#dc2626");
+        showMessage("Please enter a task!", true);
         return;
     }
 
+    addButton.disabled = true;
+
     try {
-        const response = await fetch(
-            "${API_URL}/api/tasks",
-            {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    task: taskName,
-                    priority: priority
-                })
-            }
-        );
 
-        const data = await response.json();
+        const response = await fetch(`${API_URL}/api/tasks`, {
+            method: "POST",
 
-        if (!response.ok) {
-            throw new Error(data.message);
-        }
+            headers: {
+                "Content-Type": "application/json"
+            },
 
+            body: JSON.stringify({
+                task: taskName,
+                priority: priority
+            })
+        });
+
+        const data = await readResponse(response);
+
+        // Add the newly created task to the local array
         allTasks.unshift(data);
-        displayFilteredTasks();
 
+        // Clear input
         taskInput.value = "";
 
-        priorityInput.value = "Medium";
+        // Show updated task list
+        displayFilteredTasks();
 
         showMessage("Task added successfully!");
 
     } catch (error) {
         console.error("Add task error:", error);
 
-        showMessage("Could not add task!", "#dc2626");
+        showMessage(error.message || "Couldn't add task.", true);
+
+    } finally {
+        addButton.disabled = false;
     }
 });
 
 
-// Load saved tasks when the page opens
+// ------------------------------------
+// 9. LOAD TASKS WHEN PAGE OPENS
+// ------------------------------------
+
 loadTasks();
