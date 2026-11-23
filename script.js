@@ -1,3 +1,4 @@
+const API_URL = "https://personal-task-manager-api-0xuh.onrender.com";
 
 const taskInput = document.getElementById("taskInput");
 const priorityInput = document.getElementById("priorityInput");
@@ -79,7 +80,7 @@ statusLabel.style.fontWeight = "bold";
     checkbox.addEventListener("change", async function () {
         try {
             const response = await fetch(
-                `http://127.0.0.1:5000/api/tasks/${task.id}`,
+                `${API_URL}/api/tasks/${task.id}`,
                 {
                     method: "PUT",
                     headers: {
@@ -118,7 +119,7 @@ showMessage("Task completed successfully!");
     deleteButton.addEventListener("click", async function () {
         try {
             const response = await fetch(
-                `http://127.0.0.1:5000/api/tasks/${task.id}`,
+                `${API_URL}/api/tasks/${task.id}`,
                 {
                     method: "DELETE"
                 }
@@ -161,7 +162,7 @@ li.appendChild(deleteButton);
 async function loadTasks() {
     try {
         const response = await fetch(
-            "http://127.0.0.1:5000/api/tasks"
+            "${API_URL}/api/tasks"
         );
 
         if (!response.ok) {
@@ -207,7 +208,7 @@ addButton.addEventListener("click", async function () {
 
     try {
         const response = await fetch(
-            "http://127.0.0.1:5000/api/tasks",
+            "${API_URL}/api/tasks",
             {
                 method: "POST",
                 headers: {
